@@ -1,0 +1,181 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project name="Jdev-PaaS-Template-Scripts" default="deploy" basedir="." xmlns:ac="antlib:net.sf.antcontrib" xmlns:ivy="antlib:org.apache.ivy.ant" xmlns:if="ant:if" xmlns:unless="ant:unless">
+  <record name="ant-run.log" />
+  <import file="ant-scripts/ant/deploy/oalatg-common.xml"/>
+
+  <!-- ================================= 
+                  target: resolve              
+       ================================= -->
+  <target name="resolve" description="--> retrieve dependencies with ivy">
+    <delete dir="lib"/>
+
+    <!-- <resolve-wls /> ** 10.3 version-->
+    <resolve-wls-12c />
+    <resolve-ojdeploy />
+
+    <oal-ivy-dir dir="jdev" />
+  </target>
+    
+  <target name="init">
+    <echo>Running init stage...</echo>
+    <tstamp/>
+    <echo>${user.dir}</echo>
+
+    <!-- setup needed for ojdeploy -->
+    <!-- 
+    ** Based of LXC Containers
+    <property name="bin.ojdeploy.path" value="/net/slc12pub.us.oracle.com/scratch/stage/build-system/ojdeploy-12.2.1.0.0/jdeveloper" />
+    <property name="bin.ojdeploy.path" value="/net/slc12pub.us.oracle.com/scratch/stage/build-system/ojdeploy-12.1.3.0.0/jdeveloper" />
+    
+    -->
+
+    <!-- setup for current PaaS build -->
+    <property name="bin.wlserver.ver"  value="12.2.1" />
+    <property name="bin.ojdeploy.path" value="/net/slc12pub.us.oracle.com/scratch/stage/build-system/ojdeploy-12.2.1.0.0/jdeveloper" />
+    <property name="bin.ojdeploy"      value="${bin.ojdeploy.path}/jdev/bin/ojdeploy" />
+    <property name="bin.java_home"     value="/usr/java/latest" />
+
+    <property unless:set="ear.name"        name="ear.name"        value="OalScmDrmSyncApp" />
+    <property unless:set="ear.projectName" name="ear.projectName" value="OalScmDrmSyncApp" />
+    <property unless:set="ear.projectVer"  name="ear.projectVer"  value="16.10.0.0" />
+    <property unless:set="ear.location"    name="ear.location"    value="jdev/deploy/OalDRMQuartz.ear" />
+
+    <!-- pick one -->
+    <property unless:set="ear.clusterGroup"   name="ear.clusterGroup"   value="PaaS-ERPCluster" />
+
+    <!--
+    <property unless:set="ear.serverURL"   name="ear.serverURL"   value="localhost:7001" />
+    <property unless:set="ear.target"      name="ear.target"      value="ERPJCSDe_cluster" />
+    -->
+
+    <versionSet />
+  </target>
+
+  <mkdir dir="lib" />
+
+  <path id="user.class.path">
+         <pathelement location="lib/"/>
+
+         <dirset dir="">
+           <include name="**/classes"/>
+           <include name="**/*.jar"/>
+         </dirset>
+  </path>
+
+  <target name="compile" depends="init,resolve">
+    <echo>Starting OAL compiling step...</echo>
+
+    <!-- Auto-Scan Building -->
+    <oal-ojdeploy-build />
+
+    <!-- Manually Building -->
+    <!--
+    <oal-ojdeploy    workspace="jdev/*.jws"
+                       project="*"
+                       profile="*"
+                  forcerewrite="true"
+                     nocompile="false"
+                         clean="true" 
+     />
+    -->
+   
+   <!-- NetBeans -->
+   <!--
+    <subant target="package" buildpath="${user.dir}/netbeans">
+       <property name="bin.java_home"     value="${bin.java_home}" />
+       <fileset dir="${user.dir}/netbeans" includes="build.xml"/>
+    </subant>
+    -->
+ 
+    <oal-sonar-scanner projectName="${ear.projectName}" projectVersion="${ear.projectVer}" />    
+  </target>
+  
+  <target name="selenium">
+      <oal-selenium-bin />
+  </target>
+
+  <target name="sonar" depends="init">
+      <oal-sonar-scanner mode="preview" projectName="${ear.projectName}" projectVersion="${ear.projectVer}" />
+  </target>
+
+  <target name="deploy" depends="init">
+    <echo>Starting OAL deploy step...</echo>
+         <!-- if undeploy is left out we get retired versions:  way to check it's status 
+                  <oal-wlst-applicationStatus adminURL="${ear.serverURL}" 
+                                           clusterName="${ear.target}" 
+                                           application="OalODCSDemo" 
+                                               version="10.12.0.0"  failonerror="false" /> -->
+       <retry retrycount="3">
+         <sequential>
+
+           <!-- will start the cluster if it's down, fail if it can't bring it up -->
+           <oal-wlst-startCluster  adminURL="${ear.serverURL}" clusterName="${ear.target}" failonerror="true" />
+
+           <oal-wlst-undeploy adminURL="${ear.serverURL}"
+                               earName="${ear.name}"
+                             earTarget="${ear.target}"
+                           failOnError="false" />
+
+           <oal-wlst adminURL="${ear.serverURL}"
+                  earLocation="${ear.location}"
+                      earName="${ear.name}"
+                    earTarget="${ear.target}"
+                    earAction="deploy"
+                    earUpload="true"
+               earDeleteFiles="true"
+                earAppVersion="${ear.projectVer}"
+                  failOnError="true" />
+
+           <!-- verify if the application is running -->
+           <oal-wlst-applicationStatus adminURL="${ear.serverURL}" clusterName="${ear.target}" application="${ear.name}" version="${ear.projectVer}"/>
+           
+           <!-- command to modify options on a deployment and update the plan -->
+           <!--
+           <oal-wlst-updateApplication adminURL="${ear.serverURL}"
+                                        appName="${ear.name}" 
+                                        planPath="${user.dir}/planLocation.xml" />
+                                        options="deploymentOrder='10', otherOption=''" />
+
+           <oal-wlst-DeploymentOrder adminURL="${ear.serverURL}"
+                                      appName="${ear.name}" 
+                                   appVersion="${ear.projectVer}" 
+                              deploymentOrder="100" />
+
+           <oal-wlst-cmo adminURL="${ear.serverURL}"
+                          appName="${ear.name}" 
+                       appVersion="${ear.projectVer}" 
+                       optionName="setDeploymentOrder"
+                      optionParms="33" />
+
+           <oal-wlst-cmo adminURL="${ear.serverURL}"
+                          appName="${ear.name}" 
+                       appVersion="${ear.projectVer}" 
+                       optionName="setDeploymentPrincipalName"
+                      optionParms="name-goes-here" />
+
+           -->
+         </sequential>
+       </retry>
+
+
+       <!--
+       <oal-wlst-revokePermission adminURL="${ear.serverURL}"
+                               failOnError="false"
+                               codeBaseURL="file:${domain.home}/servers/${weblogic.Name}/tmp/_WL_user/${ear.name}_${ear.projectVer}/-"
+                                 permClass="oracle.security.jps.service.credstore.CredentialAccessPermission"
+                                permTarget="oal.sample,keyName=OALSAMPLE_USER"
+                               permActions="read" />
+
+       <oal-wlst-grantPermission adminURL="${ear.serverURL}"
+                              failOnError="true"
+                              codeBaseURL="file:${domain.home}/servers/${weblogic.Name}/tmp/_WL_user/${ear.name}_${ear.projectVer}/-"
+                                permClass="oracle.security.jps.service.credstore.CredentialAccessPermission"
+                               permTarget="oal.sample,keyName=OALSAMPLE_USER"
+                              permActions="read" />
+       />
+       -->
+
+  </target>
+
+</project>
+

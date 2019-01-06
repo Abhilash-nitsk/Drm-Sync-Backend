@@ -1,0 +1,21 @@
+<ivy-module version="2.0">
+    <info organisation="com.oracle.oal" module="OALDrmSyncApplication"/>
+    <dependencies>
+     <dependency org="org.json" name="json" rev="20160810">
+       <artifact name="json" ext="jar"/>
+	 
+	 <dependency org="org.apache.logging.log4j" name="log4j-core" rev="2.6.1">
+              <artifact name="log4j-core" ext="jar"/>
+          </dependency>
+
+          <dependency org="org.apache.logging.log4j" name="log4j-api" rev="2.6.1">
+              <artifact name="log4j-api" ext="jar"/>
+         </dependency>
+         <dependency org="oal.util.logger" name="LoggerApp" rev="16.4">
+               <artifact name="LoggerApp" ext="jar"/>
+         </dependency>
+    </dependencies>
+</ivy-module>
+
+ 
+
